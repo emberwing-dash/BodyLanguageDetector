@@ -1,0 +1,3 @@
+.json is security protected
+
+its a security file
