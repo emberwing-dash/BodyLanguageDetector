@@ -5,6 +5,8 @@ import time
 from collections import deque
 import threading
 import tkinter as tk
+import sys
+
 
 # ---------------------------
 # Init MediaPipe
@@ -14,21 +16,28 @@ mp_pose = mp.solutions.pose
 mp_face_mesh = mp.solutions.face_mesh
 mp_face_detection = mp.solutions.face_detection
 
+
 pose = mp_pose.Pose(min_detection_confidence=0.5, min_tracking_confidence=0.5)
 face_mesh = mp_face_mesh.FaceMesh(max_num_faces=1, refine_landmarks=True,
                                   min_detection_confidence=0.5, min_tracking_confidence=0.5)
 face_detector = mp_face_detection.FaceDetection(min_detection_confidence=0.5)
 
+
 # ---------------------------
 # Config / thresholds
 # ---------------------------
-WAVE_HISTORY = 16            # frames to look at for waving
-WAVE_MIN_CHANGES = 3         # number of direction changes in history to call it waving
-POINTING_DISTANCE_RATIO = 1.2  # wrist distance relative to shoulder width to call "extended"
-HAND_RAISE_OFFSET = -20      # pixels: wrist y < shoulder y + offset => raised (negative offset raises threshold)
-OBJECT_NON_SKIN_THRESHOLD = 120  # pixel count of non-skin found in wrist ROI to indicate object
-ROI_SIZE = 50                # wrist ROI half-size in px
+WAVE_HISTORY = 16
+WAVE_MIN_CHANGES = 3
+POINTING_DISTANCE_RATIO = 1.2
+HAND_RAISE_OFFSET = -20
+OBJECT_NON_SKIN_THRESHOLD = 120
+ROI_SIZE = 50
 FPS_SMOOTH = 0.9
+NECK_ROTATION_THRESHOLD = 0.11
+
+GAZE_WARNING_THRESHOLD = 5
+NECK_ROT_WARNING_THRESHOLD = 5
+INTRUDER_DISPLAY_DURATION = 5  # seconds to show intruder message
 
 # Behavior counters
 behavior_counts = {
@@ -57,18 +66,12 @@ popup_thread = None
 popup_shown = False
 
 def intruder_popup_thread_fn(event: threading.Event):
-    """Thread target to show a Tkinter popup; will close when event is set."""
     root = tk.Tk()
     root.title("Alert")
-    # make the window small, always-on-top, centered
     root.attributes("-topmost", True)
-    # Remove minimize/resize (platform dependent)
     root.resizable(False, False)
-
     label = tk.Label(root, text="INTRUDER DETECTED!", font=("Helvetica", 28, "bold"), fg="white", bg="red", padx=30, pady=20)
     label.pack()
-
-    # center the window on screen
     root.update_idletasks()
     width = root.winfo_width()
     height = root.winfo_height()
@@ -84,7 +87,6 @@ def intruder_popup_thread_fn(event: threading.Event):
                 pass
         else:
             root.after(100, check_event)
-
     root.after(100, check_event)
     try:
         root.mainloop()
@@ -108,27 +110,21 @@ def close_intruder_popup():
         popup_event.set()
     except Exception:
         pass
-    # don't block too long on join; thread is daemon so it's fine
     popup_thread = None
     popup_event = None
     popup_shown = False
 
 # ---------------------------
-# Helpers (same as yours)
+# Helpers
 # ---------------------------
 def to_pixel_coords(landmark, w, h):
-    """Return integer pixel coords for a normalized landmark."""
     return int(landmark.x * w), int(landmark.y * h)
 
 def avg_z(landmarks, indices):
-    """Return average z for a list of pose landmark indices."""
     zs = [landmarks[i].z for i in indices]
     return sum(zs) / len(zs)
 
 def detect_emotion(face_landmarks):
-    lm = face_landmarks  # list-like with attributes x,y,z
-
-    # Indices chosen from Mediapipe face mesh common mapping
     TOP_LIP = 13
     BOTTOM_LIP = 14
     LEFT_LIP = 61
@@ -142,16 +138,15 @@ def detect_emotion(face_landmarks):
     CHIN = 152
     NOSE_TIP = 1
 
-    mouth_open = abs(lm[TOP_LIP].y - lm[BOTTOM_LIP].y)
-    mouth_width = abs(lm[LEFT_LIP].x - lm[RIGHT_LIP].x)
-    eye_open_left = abs(lm[EYE_TOP_L].y - lm[EYE_BOT_L].y)
-    eye_open_right = abs(lm[EYE_TOP_R].y - lm[EYE_BOT_R].y)
+    mouth_open = abs(face_landmarks[TOP_LIP].y - face_landmarks[BOTTOM_LIP].y)
+    mouth_width = abs(face_landmarks[LEFT_LIP].x - face_landmarks[RIGHT_LIP].x)
+    eye_open_left = abs(face_landmarks[EYE_TOP_L].y - face_landmarks[EYE_BOT_L].y)
+    eye_open_right = abs(face_landmarks[EYE_TOP_R].y - face_landmarks[EYE_BOT_R].y)
     avg_eye_open = (eye_open_left + eye_open_right) / 2
-    brow_sep = abs(lm[BROW_INNER_L].y - lm[BROW_INNER_R].y)
-    nose_chin = abs(lm[NOSE_TIP].y - lm[CHIN].y)
-    mouth_corner_drop = (lm[RIGHT_LIP].y + lm[LEFT_LIP].y) / 2 - lm[TOP_LIP].y
+    brow_sep = abs(face_landmarks[BROW_INNER_L].y - face_landmarks[BROW_INNER_R].y)
+    nose_chin = abs(face_landmarks[NOSE_TIP].y - face_landmarks[CHIN].y)
+    mouth_corner_drop = (face_landmarks[RIGHT_LIP].y + face_landmarks[LEFT_LIP].y) / 2 - face_landmarks[TOP_LIP].y
 
-    # Heuristics (tune thresholds for your camera)
     if avg_eye_open > 0.045 and mouth_open > 0.05:
         return "Surprised"
     if avg_eye_open < 0.015:
@@ -275,6 +270,52 @@ def detect_gestures(p_landmarks, w, h):
 
     return results, lw_px, rw_px
 
+# Eye gaze detection
+def get_eye_gaze_direction(face_landmarks, w, h):
+    LEFT_IRIS = [468, 469, 470, 471]
+    LEFT_EYE_LEFT_CORNER = 33
+    LEFT_EYE_RIGHT_CORNER = 133
+    eye_top = face_landmarks[159]
+    eye_bottom = face_landmarks[145]
+
+    left_iris_xy = np.mean(
+        [[face_landmarks[i].x, face_landmarks[i].y] for i in LEFT_IRIS], axis=0)
+    eye_left = face_landmarks[LEFT_EYE_LEFT_CORNER]
+    eye_right = face_landmarks[LEFT_EYE_RIGHT_CORNER]
+
+    eye_width = eye_right.x - eye_left.x
+    pos = (left_iris_xy[0] - eye_left.x) / (eye_width + 1e-6)
+    vert_pos = (left_iris_xy[1] - eye_top.y) / (eye_bottom.y - eye_top.y + 1e-6)
+
+    if pos < 0.35:
+        return "LEFT"
+    elif pos > 0.65:
+        return "RIGHT"
+    elif vert_pos < 0.40:
+        return "UP"
+    elif vert_pos > 0.60:
+        return "DOWN"
+    else:
+        return "CENTER"
+
+# Neck rotation detection (left/right)
+def get_neck_rotation_direction(p_landmarks, w, h):
+    nose = p_landmarks[mp_pose.PoseLandmark.NOSE]
+    ls = p_landmarks[mp_pose.PoseLandmark.LEFT_SHOULDER]
+    rs = p_landmarks[mp_pose.PoseLandmark.RIGHT_SHOULDER]
+    nose_x = nose.x
+    ls_x = ls.x
+    rs_x = rs.x
+    shoulder_width = abs(rs_x - ls_x)
+    nose_rel = (nose_x - ls_x) / (shoulder_width + 1e-6)
+
+    if nose_rel < 0.33 - NECK_ROTATION_THRESHOLD:
+        return "LEFT"
+    elif nose_rel > 0.67 + NECK_ROTATION_THRESHOLD:
+        return "RIGHT"
+    else:
+        return "CENTER"
+
 # ---------------------------
 # Main loop
 # ---------------------------
@@ -282,11 +323,21 @@ cap = cv2.VideoCapture(0)
 prev_time = time.time()
 fps = 0.0
 
+gaze_direction_start_time = time.time()
+last_gaze_direction = None
+neck_direction_start_time = time.time()
+last_neck_direction = None
+
+intruder_detected = False
+intruder_show_start_time = None
+last_frame = None
+
 try:
     while cap.isOpened():
         ret, frame = cap.read()
         if not ret:
             break
+
         h, w, _ = frame.shape
         frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
@@ -295,14 +346,12 @@ try:
         face_results = face_mesh.process(frame_rgb)
         face_detect_results = face_detector.process(frame_rgb)
 
-        # default posture values
         posture = "Neutral"
         lw_px = rw_px = (0, 0)
 
-        # --- Face detection (multi-face) & intruder logic ---
-        intruder_detected = False
+        intruder_detected_this_frame = False
+
         if face_detect_results and face_detect_results.detections:
-            # collect bounding boxes and sizes to pick main person (largest area)
             face_boxes = []
             for det in face_detect_results.detections:
                 bboxC = det.location_data.relative_bounding_box
@@ -313,15 +362,20 @@ try:
                 area = max(0, bw * bh)
                 face_boxes.append((area, x, y, bw, bh))
 
-            # sort by area descending
             face_boxes.sort(key=lambda t: t[0], reverse=True)
             num_faces = len(face_boxes)
             if num_faces > 1:
+                intruder_detected_this_frame = True
+                if not intruder_detected:
+                    show_intruder_popup()
+                    intruder_show_start_time = time.time()
                 intruder_detected = True
             else:
-                intruder_detected = False
+                if intruder_detected:
+                    intruder_detected = False
+                    intruder_show_start_time = None
+                    close_intruder_popup()
 
-            # Draw boxes: largest = main (green), others = intruders (red)
             for idx, (area, x, y, bw, bh) in enumerate(face_boxes):
                 if idx == 0:
                     color = (0, 255, 0)
@@ -331,19 +385,29 @@ try:
                     label = "Intruder"
                 cv2.rectangle(frame, (x, y), (x + bw, y + bh), color, 2)
                 cv2.putText(frame, f"{label}", (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 2)
-
-        # show/hide popup based on intruder_detected
-        if intruder_detected:
-            show_intruder_popup()
-            # also show on-frame alert
-            cv2.putText(frame, "INTRUDER DETECTED!", (50, 100),
-                        cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 0, 255), 4)
         else:
-            # close popup if it was shown
-            if popup_shown:
+            if intruder_detected:
+                intruder_detected = False
+                intruder_show_start_time = None
                 close_intruder_popup()
 
-        # --- Pose-based detections ---
+        # If intruder detected, show message for the duration, then continue normal processing
+        if intruder_detected:
+            elapsed = time.time() - intruder_show_start_time
+            cv2.putText(frame, "INTRUDER DETECTED!", (w//4, h//2),
+                        cv2.FONT_HERSHEY_SIMPLEX, 2, (0, 0, 255), 5)
+            if elapsed > INTRUDER_DISPLAY_DURATION:
+                intruder_detected = False
+                intruder_show_start_time = None
+                close_intruder_popup()
+            else:
+                # Show only intruder message frame during display duration
+                cv2.imshow("Interview Behavior & Emotion Analysis (Press q to quit)", frame)
+                if cv2.waitKey(1) & 0xFF == ord('q'):
+                    break
+                continue
+
+        # Pose-based detections
         if pose_results.pose_landmarks:
             mp_drawing.draw_landmarks(frame, pose_results.pose_landmarks, mp_pose.POSE_CONNECTIONS,
                                       mp_drawing.DrawingSpec(color=(80,110,10), thickness=1, circle_radius=1),
@@ -377,16 +441,41 @@ try:
 
             cv2.putText(frame, f"Posture: {posture}", (10, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 0, 255), 2)
 
-        # Face/emotion via face_mesh (detailed landmarks)
+            # Neck rotation detection & warning
+            neck_dir = get_neck_rotation_direction(p_landmarks, w, h)
+            if neck_dir == last_neck_direction and neck_dir != "CENTER":
+                if time.time() - neck_direction_start_time > NECK_ROT_WARNING_THRESHOLD:
+                    cv2.putText(frame, "Warning!", (w//2 - 150, h//2 + 50),
+                                cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 0, 255), 3)
+                    cv2.putText(frame, "Head turned too long", (w//2 - 150, h//2 + 90),
+                                cv2.FONT_HERSHEY_SIMPLEX, 1.1, (0, 0, 255), 3)
+            else:
+                neck_direction_start_time = time.time()
+                last_neck_direction = neck_dir
+            cv2.putText(frame, f"Neck: {neck_dir}", (w - 320, 175), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 150, 255), 2)
+
+        # Face/emotion & Eye gaze
         if face_results and face_results.multi_face_landmarks:
             for face_landmarks in face_results.multi_face_landmarks:
-                mp_drawing.draw_landmarks(frame, face_landmarks, mp_face_mesh.FACEMESH_TESSELATION,
-                                          landmark_drawing_spec=None,
-                                          connection_drawing_spec=mp_drawing.DrawingSpec((200,200,200), 1, 1))
+                mp_drawing.draw_landmarks(
+                    frame, face_landmarks, mp_face_mesh.FACEMESH_TESSELATION,
+                    landmark_drawing_spec=None,
+                    connection_drawing_spec=mp_drawing.DrawingSpec((200,200,200), 1, 1))
                 emotion_label = detect_emotion(face_landmarks.landmark)
+                g_dir = get_eye_gaze_direction(face_landmarks.landmark, w, h)
+                if g_dir == last_gaze_direction and g_dir != "CENTER":
+                    if time.time() - gaze_direction_start_time > GAZE_WARNING_THRESHOLD:
+                        cv2.putText(frame, "Warning!", (w//2 - 150, h//2),
+                                    cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 0, 255), 3)
+                        cv2.putText(frame, "Eye gaze too long", (w//2 - 150, h//2 + 40),
+                                    cv2.FONT_HERSHEY_SIMPLEX, 1.1, (0, 0, 255), 3)
+                else:
+                    gaze_direction_start_time = time.time()
+                    last_gaze_direction = g_dir
+                cv2.putText(frame, f"Gaze: {g_dir}", (w - 320, 140), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 150, 255), 2)
             cv2.putText(frame, f"Emotion: {emotion_label}", (w - 360, 100), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (255, 0, 0), 2)
 
-        # Behavior summary on frame
+        # Behavior summary
         y_offset = h - 220
         i = 0
         for label, count in behavior_counts.items():
@@ -406,9 +495,13 @@ try:
             break
 
 finally:
-    # cleanup
     cap.release()
     cv2.destroyAllWindows()
+    if popup_shown:
+        try:
+            popup_event.set()
+        except Exception:
+            pass
     try:
         pose.close()
     except Exception:
@@ -421,10 +514,3 @@ finally:
         face_detector.close()
     except Exception:
         pass
-
-    # ensure popup closed
-    if popup_shown:
-        try:
-            popup_event.set()
-        except Exception:
-            pass
