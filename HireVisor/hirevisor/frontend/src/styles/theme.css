@@ -1,0 +1,316 @@
+/* :root {
+    --primary-color: #2563eb;
+    --primary-hover: #1d4ed8;
+    --bg-light: #f9fafb;
+    --bg-dark: #111827;
+    --text-light: #1f2937;
+    --text-dark: #f3f4f6;
+    --input-bg-light: #ffffff;
+    --input-bg-dark: #1f2937;
+    --border-radius: 8px;
+    --transition-speed: 0.3s;
+  }
+  
+  body {
+    margin: 0;
+    font-family: "Inter", sans-serif;
+    background-color: var(--bg-light);
+    color: var(--text-light);
+    transition: background-color var(--transition-speed), color var(--transition-speed);
+  }
+  
+  body.dark-mode {
+    background-color: var(--bg-dark);
+    color: var(--text-dark);
+  }
+  
+  .page-container {
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+  }
+  
+  .main-content {
+    flex: 1;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 2rem;
+  }
+  
+  .form-page {
+    width: 100%;
+    max-width: 500px;
+    background-color: var(--input-bg-light);
+    padding: 2rem;
+    border-radius: var(--border-radius);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  }
+  
+  body.dark-mode .form-page {
+    background-color: var(--input-bg-dark);
+  }
+  
+  input, select {
+    width: 100%;
+    padding: 0.8rem;
+    margin: 0.5rem 0 1rem 0;
+    font-size: 1rem;
+    border: 1px solid #d1d5db;
+    border-radius: var(--border-radius);
+    background-color: var(--input-bg-light);
+    transition: background-color var(--transition-speed), border var(--transition-speed);
+  }
+  
+  body.dark-mode input, 
+  body.dark-mode select {
+    background-color: var(--input-bg-dark);
+    border: 1px solid #374151;
+    color: var(--text-dark);
+  }
+  
+  .cta-btn {
+    width: 100%;
+    background-color: var(--primary-color);
+    color: white;
+    border: none;
+    padding: 0.9rem;
+    font-size: 1rem;
+    border-radius: var(--border-radius);
+    cursor: pointer;
+    transition: background-color var(--transition-speed);
+  }
+  
+  .cta-btn:hover {
+    background-color: var(--primary-hover);
+  }
+  
+  footer {
+    background-color: var(--primary-color);
+    color: white;
+    text-align: center;
+    padding: 1rem;
+  }
+  
+  .homepage-container {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  height: 100vh;
+  background: linear-gradient(135deg, #0f2027, #203a43, #2c5364);
+  color: white;
+}
+
+.homepage-title {
+  font-size: 4rem;
+  font-weight: 800;
+  margin-bottom: 0.5rem;
+}
+
+.homepage-slogan {
+  font-size: 1.5rem;
+  font-weight: 300;
+  margin-bottom: 2rem;
+}
+
+.homepage-buttons {
+  display: flex;
+  gap: 1.5rem;
+}
+
+/* ---------- HOMEPAGE STYLING ---------- */
+
+/*
+.homepage-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+  text-align: center;
+  background: linear-gradient(135deg, #0f2027, #203a43, #2c5364);
+  color: white;
+  padding: 2rem;
+}
+
+.homepage-content {
+  max-width: 800px;
+}
+
+.homepage-title {
+  font-size: 4rem;
+  font-weight: 800;
+  letter-spacing: 2px;
+  margin-bottom: 1rem;
+}
+
+.homepage-subtitle {
+  font-size: 1.5rem;
+  opacity: 0.85;
+  margin-bottom: 3rem;
+}
+
+.homepage-buttons {
+  display: flex;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.homepage-buttons .primary-btn,
+.homepage-buttons .secondary-btn {
+  font-size: 1.2rem;
+  padding: 1rem 2rem;
+  border-radius: 10px;
+  min-width: 160px;
+} */
+
+/* ---------- GLOBAL STYLES ---------- */
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  background: linear-gradient(135deg, #0f2027, #203a43, #2c5364);
+  background-attachment: fixed;
+  color: white;
+  font-family: 'Poppins', sans-serif;
+  font-size: 18px;
+  transition: background 0.3s, color 0.3s;
+}
+
+/* Light Mode */
+body.light-mode {
+  background: linear-gradient(135deg, #f8f9fa, #e9ecef, #dee2e6);
+  color: #222;
+}
+
+/* ---------- LAYOUT ---------- */
+.page-container {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+main {
+  flex: 1;
+  padding: 2rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+h1 {
+  font-size: 2.5rem;
+  margin-bottom: 1rem;
+}
+
+p {
+  font-size: 1.2rem;
+  max-width: 700px;
+}
+
+/* ---------- NAVBAR ---------- */
+.navbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem 2rem;
+  background: rgba(0,0,0,0.4);
+  backdrop-filter: blur(8px);
+  position: sticky;
+  top: 0;
+}
+
+.navbar.light-mode {
+  background: rgba(255,255,255,0.7);
+}
+
+.navbar a {
+  color: white;
+  margin-left: 1rem;
+  text-decoration: none;
+  font-weight: bold;
+}
+
+.navbar.light-mode a {
+  color: black;
+}
+
+.navbar a:hover {
+  color: #7be8ff;
+}
+
+/* ---------- FOOTER ---------- */
+.footer {
+  background: rgba(0,0,0,0.5);
+  padding: 1rem;
+  text-align: center;
+  font-size: 0.9rem;
+  margin-top: auto;
+}
+
+.footer.light-mode {
+  background: rgba(255,255,255,0.6);
+}
+
+/* ---------- BUTTONS ---------- */
+button, .primary-btn, .secondary-btn {
+  padding: 1rem 2rem;
+  border: none;
+  border-radius: 10px;
+  font-size: 1.1rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.primary-btn {
+  background: #1abc9c;
+  color: white;
+}
+
+.primary-btn:hover {
+  background: #16a085;
+}
+
+.secondary-btn {
+  background: rgba(255,255,255,0.1);
+  color: white;
+}
+
+.secondary-btn:hover {
+  background: rgba(255,255,255,0.2);
+}
+
+/* ---------- INPUTS ---------- */
+input, select, textarea {
+  padding: 0.9rem;
+  border-radius: 8px;
+  border: none;
+  width: 100%;
+  max-width: 450px;
+  margin-bottom: 1rem;
+  background: rgba(255,255,255,0.1);
+  color: white;
+  font-size: 1rem;
+}
+
+input::placeholder {
+  color: rgba(255,255,255,0.6);
+}
+
+body.light-mode input, 
+body.light-mode select, 
+body.light-mode textarea {
+  background: rgba(0,0,0,0.05);
+  color: black;
+}
+
