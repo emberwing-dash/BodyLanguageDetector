@@ -1,0 +1,8 @@
+flask
+flask-socketio
+opencv-python
+mediapipe
+transformers
+torch
+numpy
+Pillow
