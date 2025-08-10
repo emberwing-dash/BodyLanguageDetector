@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Interview</title>
+</head>
+<body>
+    <button id="startBtn">Start Interview</button>
+    <br>
+    <img id="video" style="display:none;" />
+    <script>
+        document.getElementById("startBtn").onclick = function() {
+            document.getElementById("video").src = "/video_feed";
+            document.getElementById("video").style.display = "block";
+        };
+    </script>
+</body>
+</html>
