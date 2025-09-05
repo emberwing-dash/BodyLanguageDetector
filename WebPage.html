@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>COVID-19 X-ray Classification</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #f8f9fa;
+            color: #333;
+            line-height: 1.6;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            padding: 30px;
+        }
+
+        h1 {
+            text-align: center;
+            color: #2c3e50;
+            margin-bottom: 30px;
+            font-size: 1.8rem;
+            font-weight: 600;
+        }
+
+        .upload-section {
+            margin-bottom: 25px;
+        }
+
+        .upload-group {
+            margin-bottom: 20px;
+            padding: 20px;
+            border: 1px solid #e9ecef;
+            border-radius: 6px;
+            background: #f8f9fa;
+        }
+
+        .upload-label {
+            font-weight: 500;
+            margin-bottom: 10px;
+            color: #495057;
+        }
+
+        .file-input {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid #ced4da;
+            border-radius: 4px;
+            background: white;
+            font-size: 14px;
+        }
+
+        .preview {
+            margin-top: 10px;
+            text-align: center;
+        }
+
+        .preview img {
+            max-width: 150px;
+            max-height: 150px;
+            border-radius: 4px;
+            border: 1px solid #dee2e6;
+        }
+
+        .file-name {
+            margin-top: 5px;
+            font-size: 12px;
+            color: #6c757d;
+        }
+
+        .process-btn {
+            width: 100%;
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 12px 20px;
+            border-radius: 4px;
+            font-size: 16px;
+            cursor: pointer;
+            margin-bottom: 20px;
+        }
+
+        .process-btn:hover:not(:disabled) {
+            background: #0056b3;
+        }
+
+        .process-btn:disabled {
+            background: #6c757d;
+            cursor: not-allowed;
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 20px;
+            color: #6c757d;
+        }
+
+        .result {
+            display: none;
+            border: 1px solid #d1ecf1;
+            background: #d1ecf1;
+            border-radius: 4px;
+            padding: 20px;
+            text-align: center;
+        }
+
+        .prediction {
+            font-size: 1.5rem;
+            font-weight: 600;
+            margin-bottom: 10px;
+            padding: 10px;
+            border-radius: 4px;
+        }
+
+        .covid { background: #f8d7da; color: #721c24; }
+        .normal { background: #d4edda; color: #155724; }
+        .lung-opacity { background: #fff3cd; color: #856404; }
+        .viral-pneumonia { background: #e2e3f1; color: #383d41; }
+
+        .confidence {
+            font-size: 1.1rem;
+            margin-bottom: 15px;
+            color: #495057;
+        }
+
+        .probabilities {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+            margin-top: 15px;
+        }
+
+        .prob-item {
+            background: white;
+            padding: 10px;
+            border-radius: 4px;
+            border: 1px solid #dee2e6;
+        }
+
+        .prob-label {
+            font-size: 12px;
+            color: #6c757d;
+            margin-bottom: 3px;
+        }
+
+        .prob-value {
+            font-weight: 600;
+            color: #495057;
+        }
+
+        .error {
+            display: none;
+            background: #f8d7da;
+            color: #721c24;
+            padding: 10px 15px;
+            border-radius: 4px;
+            margin-top: 10px;
+            font-size: 14px;
+        }
+
+        @media (max-width: 480px) {
+            .container {
+                padding: 20px;
+                margin: 10px;
+            }
+            
+            h1 {
+                font-size: 1.5rem;
+            }
+
+            .probabilities {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>COVID-19 X-ray Classification</h1>
+        
+        <div class="upload-section">
+            <div class="upload-group">
+                <div class="upload-label">X-ray Image:</div>
+                <input type="file" id="xrayInput" class="file-input" accept="image/*">
+                <div id="xrayPreview" class="preview"></div>
+            </div>
+
+            <div class="upload-group">
+                <div class="upload-label">Mask Image:</div>
+                <input type="file" id="maskInput" class="file-input" accept="image/*">
+                <div id="maskPreview" class="preview"></div>
+            </div>
+        </div>
+
+        <button class="process-btn" id="processBtn" disabled>
+            Select both images to analyze
+        </button>
+
+        <div class="loading" id="loading">
+            <p>Analyzing images...</p>
+        </div>
+
+        <div class="error" id="error"></div>
+
+        <div class="result" id="result">
+            <div id="predictionContent"></div>
+        </div>
+    </div>
+
+    <script>
+        let xrayFile = null;
+        let maskFile = null;
+        let xrayBase64 = null;
+        let maskBase64 = null;
+
+        document.getElementById('xrayInput').addEventListener('change', function(e) {
+            handleFile(e.target.files[0], 'xray');
+        });
+
+        document.getElementById('maskInput').addEventListener('change', function(e) {
+            handleFile(e.target.files[0], 'mask');
+        });
+
+        function handleFile(file, type) {
+            if (!file) return;
+            
+            if (!file.type.startsWith('image/')) {
+                showError('Please select a valid image file');
+                return;
+            }
+
+            if (type === 'xray') {
+                xrayFile = file;
+                showPreview(file, 'xrayPreview');
+                convertToBase64(file, 'xray');
+            } else {
+                maskFile = file;
+                showPreview(file, 'maskPreview');
+                convertToBase64(file, 'mask');
+            }
+
+            updateButton();
+            hideError();
+            hideResult();
+        }
+
+        function convertToBase64(file, type) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                if (type === 'xray') {
+                    xrayBase64 = e.target.result;
+                } else {
+                    maskBase64 = e.target.result;
+                }
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function showPreview(file, containerId) {
+            const container = document.getElementById(containerId);
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                container.innerHTML = `
+                    <img src="${e.target.result}" alt="Preview">
+                    <div class="file-name">${file.name}</div>
+                `;
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function updateButton() {
+            const btn = document.getElementById('processBtn');
+            btn.disabled = !xrayFile || !maskFile;
+            btn.textContent = xrayFile && maskFile ? 'Analyze Images' : 'Select both images to analyze';
+        }
+
+        function showLoading() {
+            document.getElementById('loading').style.display = 'block';
+            document.getElementById('processBtn').disabled = true;
+        }
+
+        function hideLoading() {
+            document.getElementById('loading').style.display = 'none';
+            updateButton();
+        }
+
+        function showError(message) {
+            const errorDiv = document.getElementById('error');
+            errorDiv.textContent = message;
+            errorDiv.style.display = 'block';
+        }
+
+        function hideError() {
+            document.getElementById('error').style.display = 'none';
+        }
+
+        function hideResult() {
+            document.getElementById('result').style.display = 'none';
+        }
+
+        function showResult(prediction) {
+            const classMap = {
+                'COVID': 'covid',
+                'Normal': 'normal',
+                'Lung_Opacity': 'lung-opacity',
+                'Viral Pneumonia': 'viral-pneumonia'
+            };
+
+            const className = classMap[prediction.predicted_class] || 'normal';
+            const confidence = (prediction.confidence * 100).toFixed(1);
+
+            document.getElementById('predictionContent').innerHTML = `
+                <div class="prediction ${className}">
+                    ${prediction.predicted_class}
+                </div>
+                <div class="confidence">
+                    Confidence: ${confidence}%
+                </div>
+                <div class="probabilities">
+                    ${Object.entries(prediction.all_probabilities).map(([cls, prob]) => `
+                        <div class="prob-item">
+                            <div class="prob-label">${cls}</div>
+                            <div class="prob-value">${(prob * 100).toFixed(1)}%</div>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+
+            document.getElementById('result').style.display = 'block';
+        }
+
+        document.getElementById('processBtn').addEventListener('click', async function() {
+            if (!xrayBase64 || !maskBase64) {
+                showError('Please wait for images to load completely');
+                return;
+            }
+
+            showLoading();
+            hideError();
+            hideResult();
+
+            try {
+                const response = await fetch('/predict', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        xray_image: xrayBase64,
+                        mask_image: maskBase64
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    showResult(data.prediction);
+                } else {
+                    showError(data.error || 'Analysis failed');
+                }
+            } catch (error) {
+                showError('Connection error. Please try again.');
+            } finally {
+                hideLoading();
+            }
+        });
+    </script>
+</body>
+</html>
